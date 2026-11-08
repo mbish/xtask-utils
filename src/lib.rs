@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
+use strum::Display;
 use xshell::Cmd;
 use xshell::{Shell, cmd};
 
@@ -13,7 +14,7 @@ pub trait LinuxDistro: ToString + Display + Debug {
     fn run_release_tasks(&self, version: &str, platform: &Platforms) -> Result<()>;
 }
 
-#[derive(Clone, Copy, strum::Display, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, Debug, Display)]
 pub enum Platforms {
     Amd64,
     Aarch64,
@@ -178,9 +179,10 @@ pub fn build_docker_distro(
     os: &impl LinuxDistro,
     dockerfile: &PathBuf,
 ) -> Result<DockerMetadata> {
+    let package = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
     let os_name = os.to_string();
     let tag = format!(
-        "autogain-packaging-{}-{}:{}",
+        "{package}-packaging-{}-{}:{}",
         os_name.to_lowercase(),
         platform.as_folder(),
         version
