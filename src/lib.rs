@@ -10,9 +10,32 @@ const CONTAINER_ROOT: &str = "/src";
 
 pub trait LinuxDistro: ToString + Display + Debug {
     fn get_nickname(&self) -> &'static str;
-    fn get_aptly_repo_name(&self) -> String;
-    fn run_release_tasks(&self, version: &str, platform: &Platforms) -> Result<()>;
+    fn get_aptly_repo_name(&self) -> String {
+        let package = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
+        let os = self.get_nickname();
+        format!(
+            "{package}-{os}",
+        )
+    }
 }
+
+#[derive(Clone, Copy, Debug, Display)]
+pub enum LinuxDistros {
+    Ubuntu24_04,
+    Debian12,
+    Debian13,
+}
+
+impl LinuxDistro for LinuxDistros {
+    fn get_nickname(&self) -> &'static str {
+        match self {
+            Self::Ubuntu24_04 => "noble",
+            Self::Debian12 => "bookworm",
+            Self::Debian13 => "trixie",
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug, Display)]
 pub enum Platforms {
@@ -61,12 +84,12 @@ impl DockerMetadata {
     }
     fn from_build_metadata(
         build_metadata: DockerBuildMetadata,
-        os: String,
+        os: &impl LinuxDistro,
         platform: &Platforms,
     ) -> Self {
         DockerMetadata {
             build_metadata,
-            os,
+            os: os.to_string(),
             output_folder: PathBuf::from(platform.as_folder()),
             docker_platform: platform.to_docker_platform().to_string(),
         }
@@ -180,16 +203,15 @@ pub fn build_docker_distro(
     dockerfile: &PathBuf,
 ) -> Result<DockerMetadata> {
     let package = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
-    let os_name = os.to_string();
     let tag = format!(
         "{package}-packaging-{}-{}:{}",
-        os_name.to_lowercase(),
+        os.to_string(),
         platform.as_folder(),
         version
     );
     let metadata = build_docker_image(platform, &dockerfile, Some(&tag))?;
     Ok(DockerMetadata::from_build_metadata(
-        metadata, os_name, platform,
+        metadata, os, platform,
     ))
 }
 
