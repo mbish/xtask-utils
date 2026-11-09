@@ -140,7 +140,7 @@ impl DockerImage {
         script_file.write_all(
             commands
                 .into_iter()
-                .map(|cmd| wrap_as_background(sh, cmd))
+                .map(|cmd| Self::wrap_as_background(sh, cmd))
                 .collect::<Vec<_>>()
                 .join("\n")
                 .as_bytes(),
