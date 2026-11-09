@@ -111,15 +111,15 @@ impl DockerImage {
 
 impl DockerImage {
     pub fn build_image(
+        package: &str,
         version: &str,
         platform: Platforms,
         os: &impl LinuxDistro,
         dockerfile: &PathBuf,
     ) -> Result<Self> {
-        let package = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
         let tag = format!(
             "{package}-packaging-{}-{}:{}",
-            os.to_string(),
+            os.to_string().to_lowercase(),
             platform.as_folder(),
             version
         );
