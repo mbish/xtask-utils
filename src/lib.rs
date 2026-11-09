@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::fmt::{Debug, Display};
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use strum::Display;
 use xshell::Cmd;
 use xshell::{Shell, cmd};
@@ -34,7 +35,7 @@ impl LinuxDistro for LinuxDistros {
     }
 }
 
-#[derive(Clone, Copy, Debug, Display)]
+#[derive(Clone, Copy, Debug, Display, strum::EnumIter)]
 pub enum Platforms {
     Amd64,
     Aarch64,
@@ -58,6 +59,14 @@ impl Platforms {
         match self {
             Self::Amd64 => "64-bit Intel/AMD",
             Self::Aarch64 => "64-bit ARM",
+        }
+    }
+
+    pub fn from_host() -> Result<Self> {
+        match std::env::consts::ARCH {
+            "x86_64" => Ok(Platforms::Amd64),
+            "aarch64" => Ok(Platforms::Aarch64),
+            p => anyhow::bail!("Unsupported platform {p}"),
         }
     }
 }
@@ -91,8 +100,12 @@ impl DockerImage {
             platform,
         }
     }
-    pub fn get_platform(&self) -> &str {
-        &self.platform.to_docker_platform()
+    pub fn get_platform(&self) -> Platforms {
+        self.platform
+    }
+
+    pub fn get_digest(&self) -> &str {
+        &self.build_metadata.digest
     }
 }
 
@@ -154,7 +167,7 @@ impl DockerImage {
             "Script contents:\n{}",
             std::fs::read_to_string(script_file_path)?
         );
-        let docker_platform = self.get_platform();
+        let docker_platform = self.get_platform().to_docker_platform();
         let cmd = cmd!(
             sh,
             "docker run --init --user 1000:1000 --platform {docker_platform} -w {CONTAINER_ROOT} -v {root}:{CONTAINER_ROOT} -v {script_file_path}:/command --rm {digest} sh /command"
@@ -188,6 +201,26 @@ impl DockerImage {
         cmd.run()?;
         serde_json::from_reader::<_, DockerBuildMetadata>(std::fs::File::open(metadata_path)?)
             .map_err(|e| anyhow::anyhow!("Failed to parse Docker metadata: {e}"))
+    }
+
+    pub fn shell_on_image(&self) -> Result<()> {
+        let sh = Shell::new()?;
+        let digest = &self.get_digest();
+        let root = workspace_root();
+        let docker_platform = self.get_platform().to_docker_platform();
+        let cmd = cmd!(
+            sh,
+            "docker run --user 1000:1000 --platform {docker_platform} -w {CONTAINER_ROOT} -v {root}:{CONTAINER_ROOT} --rm -it {digest} /bin/bash"
+        );
+        let mut std_cmd: Command = cmd.into();
+        std_cmd
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+
+        let mut child = std_cmd.spawn()?;
+        child.wait()?;
+        Ok(())
     }
 }
 
