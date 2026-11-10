@@ -140,10 +140,11 @@ impl DockerImage {
             + "\n"
     }
 
-    pub fn run_on_image<'a>(
+    fn run_as<'a>(
         &self,
         sh: &'a Shell,
         commands: impl IntoIterator<Item = &'a Cmd<'a>>,
+        user: u32,
     ) -> Result<()> {
         let digest = &self.build_metadata.digest;
         let root = workspace_root();
@@ -168,12 +169,29 @@ impl DockerImage {
             std::fs::read_to_string(script_file_path)?
         );
         let docker_platform = self.get_platform().to_docker_platform();
+        let user = user.to_string();
         let cmd = cmd!(
             sh,
-            "docker run --init --user 1000:1000 --platform {docker_platform} -w {CONTAINER_ROOT} -v {root}:{CONTAINER_ROOT} -v {script_file_path}:/command --rm {digest} sh /command"
+            "docker run --init --user {user}:{user} --platform {docker_platform} -w {CONTAINER_ROOT} -v {root}:{CONTAINER_ROOT} -v {script_file_path}:/command --rm {digest} sh /command"
         );
         cmd.run()?;
         Ok(())
+    }
+
+    pub fn run_as_user<'a>(
+        &self,
+        sh: &'a Shell,
+        commands: impl IntoIterator<Item = &'a Cmd<'a>>,
+    ) -> Result<()> {
+        self.run_as(sh, commands, 1000)
+    }
+
+    pub fn run_as_root<'a>(
+        &self,
+        sh: &'a Shell,
+        commands: impl IntoIterator<Item = &'a Cmd<'a>>,
+    ) -> Result<()> {
+        self.run_as(sh, commands, 0)
     }
 
     fn build_docker_image(
