@@ -9,11 +9,6 @@ pub mod docker;
 
 pub trait LinuxDistro: ToString + Display + Debug {
     fn get_nickname(&self) -> &'static str;
-    fn get_aptly_repo_name(&self) -> String {
-        let package = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
-        let os = self.get_nickname();
-        format!("{package}-{os}",)
-    }
 }
 
 #[derive(Clone, Copy, Debug, Display)]
@@ -31,6 +26,18 @@ impl LinuxDistro for LinuxDistros {
             Self::Debian13 => "trixie",
         }
     }
+}
+
+pub fn as_distro_list<D: Into<LinuxDistros>, I: Iterator<Item = D>>(
+    l: I,
+) -> Vec<Box<dyn LinuxDistro>> {
+    l.into_iter()
+        .map(as_boxed_distro)
+        .collect::<Vec<Box<dyn LinuxDistro>>>()
+}
+
+pub fn as_boxed_distro<D: Into<LinuxDistros>>(d: D) -> Box<dyn LinuxDistro> {
+    Box::<LinuxDistros>::new(d.into()) as Box<dyn LinuxDistro>
 }
 
 #[derive(Clone, Copy, Debug, Display, strum::EnumIter)]
@@ -121,4 +128,89 @@ pub fn require_release_version(version: &str) -> Result<()> {
         anyhow::bail!("Release version is not set. This action must be done on a release branch");
     }
     Ok(())
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum PackageFormat {
+    Deb,
+    Appimage,
+    Dmg,
+    Msi,
+}
+
+pub fn make_file_name(
+    format: PackageFormat,
+    package: String,
+    version: &str,
+    platform: Platforms,
+) -> Result<String> {
+    let name = match format {
+        PackageFormat::Deb | PackageFormat::Appimage => format!(
+            "{}_{}_{}.{}",
+            package,
+            version,
+            format.platform_as_package_suffix(platform),
+            format.extension()
+        ),
+        PackageFormat::Msi => format!(
+            "{}_{}_{}_{}.{}",
+            package,
+            version,
+            format.platform_as_package_suffix(platform),
+            "en-US",
+            format.extension()
+        ),
+        PackageFormat::Dmg => {
+            let root = workspace_root();
+            let cargo_toml = root.join(package).join("Cargo.toml");
+            let sh = Shell::new()?;
+            require_package("tq")?;
+            let metadata_name = {
+                let name = cmd!(
+                    sh,
+                    "tq -r --file {cargo_toml} package.metadata.packager.product-name"
+                )
+                .read()?;
+                name.replace(' ', ".")
+            };
+            format!(
+                "{}_{}_{}.{}",
+                metadata_name,
+                version,
+                format.platform_as_package_suffix(platform),
+                format.extension()
+            )
+        }
+    };
+    Ok(name)
+}
+
+impl PackageFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            PackageFormat::Deb => "deb",
+            PackageFormat::Appimage => "AppImage",
+            PackageFormat::Dmg => "dmg",
+            PackageFormat::Msi => "msi",
+        }
+    }
+
+    pub fn as_human_readable(self) -> &'static str {
+        match self {
+            PackageFormat::Deb => "(.deb) Debian Package",
+            PackageFormat::Appimage => "(.AppImage) Linux AppImage",
+            PackageFormat::Dmg => "(.dmg) macOS Disk Image",
+            PackageFormat::Msi => "(.msi) Windows Installer",
+        }
+    }
+
+    fn platform_as_package_suffix(self, platform: Platforms) -> &'static str {
+        match (platform, self) {
+            (Platforms::Amd64, PackageFormat::Deb) => "amd64",
+            (Platforms::Amd64, PackageFormat::Appimage | PackageFormat::Dmg) => "x86_64",
+            (Platforms::Amd64, PackageFormat::Msi) => "x64",
+            (Platforms::Aarch64, PackageFormat::Deb | PackageFormat::Msi) => "arm64",
+            (Platforms::Aarch64, PackageFormat::Appimage | PackageFormat::Dmg) => "aarch64",
+        }
+    }
 }

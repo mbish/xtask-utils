@@ -37,38 +37,36 @@ fn require_gpg_key(key_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub struct AptlyPackage {
-    pub distro: Box<dyn LinuxDistro>,
-    pub path: PathBuf,
-}
-
-impl AptlyPackage {
-    pub fn new(distro: Box<dyn LinuxDistro>, path: PathBuf) -> Self {
-        AptlyPackage { distro, path }
-    }
-}
-
 pub struct AptlyPublisher {
     prefix: String,
-    s3_config: AptlyS3Endpoint,
+    s3_config: AptlyS3Config,
     signing_key: String,
     profile: String,
 }
 
 #[derive(serde::Deserialize)]
-pub struct AptlyS3Endpoint {
+pub struct AptlyS3Config {
     pub bucket: String,
     pub endpoint: String,
+}
+
+impl AptlyS3Config {
+    pub fn new(bucket: &str, endpoint: &str) -> Self {
+        AptlyS3Config {
+            bucket: bucket.to_string(),
+            endpoint: endpoint.to_string(),
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
 struct AptlyConfig {
     #[serde(rename = "S3PublishEndpoints")]
-    s3_publish_endpoints: Option<std::collections::HashMap<String, AptlyS3Endpoint>>,
+    s3_publish_endpoints: Option<std::collections::HashMap<String, AptlyS3Config>>,
 }
 
 impl AptlyPublisher {
-    pub fn new(prefix: &str, s3_config: AptlyS3Endpoint, key_id: String) -> Result<Self> {
+    pub fn new(prefix: &str, s3_config: AptlyS3Config, key_id: String) -> Result<Self> {
         let profile = Self::find_aptly_s3_profile(&s3_config)?;
         let publisher = AptlyPublisher {
             prefix: prefix.to_string(),
@@ -79,7 +77,7 @@ impl AptlyPublisher {
         Ok(publisher)
     }
 
-    pub fn find_aptly_s3_profile(s3_config: &AptlyS3Endpoint) -> Result<String> {
+    fn find_aptly_s3_profile(s3_config: &AptlyS3Config) -> Result<String> {
         let sh = Shell::new()?;
         let output = cmd!(sh, "aptly config show").read()?;
         let config: AptlyConfig = serde_json::from_str(&output)?;
@@ -97,6 +95,12 @@ impl AptlyPublisher {
         );
     }
 
+    fn get_aptly_repo_name(&self, os: &dyn LinuxDistro) -> String {
+        let os = os.get_nickname();
+        let prefix = &self.prefix;
+        format!("{prefix}-{os}",)
+    }
+
     pub fn publish_repos(&self, version: &str, distros: &Vec<Box<dyn LinuxDistro>>) -> Result<()> {
         let sh = Shell::new()?;
         let time = chrono::Utc::now();
@@ -104,8 +108,8 @@ impl AptlyPublisher {
         let publications = get_aptly_publications(&sh)?;
         let storage = format!("s3:{aptly_profile}");
         sh.set_var("SOURCE_DATE_EPOCH", time.timestamp().to_string());
-        for distro in distros {
-            let distro_repo = distro.get_aptly_repo_name();
+        for distro in distros.into_iter() {
+            let distro_repo = self.get_aptly_repo_name(&**distro);
             let distro_nick = distro.get_nickname();
             let snapshot_name = format!("{version}-{distro_nick}-{}", time.format("%Y%m%d%H%M%S"));
             let key = &self.signing_key;
@@ -133,13 +137,13 @@ impl AptlyPublisher {
         Ok(())
     }
 
-    fn aptly_create_repo_from_mirror<D: AsRef<dyn LinuxDistro>>(
+    fn aptly_create_repo_from_mirror(
         &self,
-        distro: D,
+        distro: &dyn LinuxDistro,
         public_url: &str,
     ) -> Result<()> {
         let sh = Shell::new()?;
-        let distro_nickname = distro.as_ref().get_nickname();
+        let distro_nickname = distro.get_nickname();
         let prefix = &self.prefix;
         let mirror_name = format!("r2-bootstrap-{distro_nickname}");
         let snapshot_name = format!("base-{prefix}-{distro_nickname}");
@@ -162,20 +166,21 @@ impl AptlyPublisher {
         Ok(())
     }
 
-    pub fn add_package(package: AptlyPackage) -> Result<()> {
+    pub fn add_package(&self, distro: &dyn LinuxDistro, path: PathBuf) -> Result<()> {
         let sh = Shell::new()?;
-        let path = package.path;
-        let repo_name = package.distro.get_aptly_repo_name();
+        let distro_nickname = distro.get_nickname();
+        let prefix = &self.prefix;
+        let repo_name = format!("{prefix}-{distro_nickname}");
         cmd!(sh, "aptly repo add {repo_name} {path}").run()?;
         Ok(())
     }
 
-    fn aptly_update_repo_from_mirror<D: AsRef<dyn LinuxDistro>>(
+    fn aptly_update_repo_from_mirror(
         &self,
-        distro: D,
+        distro: &dyn LinuxDistro,
         public_url: &str,
     ) -> Result<()> {
-        let distro_nickname = distro.as_ref().get_nickname();
+        let distro_nickname = distro.get_nickname();
         let prefix = &self.prefix;
         let mirror_name = format!("r2-bootstrap-{distro_nickname}");
         let repo_name = format!("{prefix}-{distro_nickname}");
@@ -204,12 +209,12 @@ impl AptlyPublisher {
         for distro in distros {
             if repos
                 .iter()
-                .find(|repo| repo.name == distro.get_aptly_repo_name())
+                .find(|repo| repo.name == self.get_aptly_repo_name(&*distro))
                 .is_some()
             {
-                self.aptly_update_repo_from_mirror(&distro, &public_url)?;
+                self.aptly_update_repo_from_mirror(&*distro, &public_url)?;
             } else {
-                self.aptly_create_repo_from_mirror(&distro, &public_url)?;
+                self.aptly_create_repo_from_mirror(&*distro, &public_url)?;
             }
         }
         Ok(())
