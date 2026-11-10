@@ -11,3 +11,4 @@ tempfile = "3.15.0"
 anyhow = "1.0.100"
 strum = { version = "0.28.0", features = ["derive"] }
 which = "8.0.6"
+chrono = { version = "0.4.44", default-features = false, features = ["serde", "clock"] }
