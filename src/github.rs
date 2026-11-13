@@ -163,6 +163,13 @@ impl BuildArtifact {
 fn get_build_artifacts(packages: Vec<String>, version: &str) -> Result<Vec<BuildArtifact>> {
     let mut artifacts = Vec::new();
     let artifacts_dir = workspace_root().join("artifacts").join(version);
+    if !artifacts_dir.exists() {
+        eprintln!(
+            "Artifacts directory '{}' does not exist. No artifacts to publish.",
+            artifacts_dir.display()
+        );
+        return Ok(vec![]);
+    }
     for os in std::fs::read_dir(&artifacts_dir)? {
         let os_entry = os?.path();
         let os_name = {
