@@ -77,6 +77,10 @@ impl AptlyPublisher {
         Ok(publisher)
     }
 
+    pub fn get_s3_config(&self) -> &AptlyS3Config {
+        &self.s3_config
+    }
+
     fn find_aptly_s3_profile(s3_config: &AptlyS3Config) -> Result<String> {
         let sh = Shell::new()?;
         let output = cmd!(sh, "aptly config show").read()?;

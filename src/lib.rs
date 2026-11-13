@@ -1,11 +1,13 @@
 use anyhow::Result;
+use std::ffi::OsStr;
 use std::fmt::{Debug, Display};
 use std::path::PathBuf;
-use strum::Display;
+use strum::{Display, EnumIter};
 use xshell::{Shell, cmd};
 
 pub mod aptly;
 pub mod docker;
+pub mod github;
 
 pub trait LinuxDistro: ToString + Display + Debug {
     fn get_nickname(&self) -> &'static str;
@@ -130,7 +132,7 @@ pub fn require_release_version(version: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, EnumIter)]
 pub enum PackageFormat {
     Deb,
     Appimage,
@@ -192,6 +194,16 @@ impl PackageFormat {
             PackageFormat::Appimage => "AppImage",
             PackageFormat::Dmg => "dmg",
             PackageFormat::Msi => "msi",
+        }
+    }
+
+    pub fn from_extension(ext: &OsStr) -> Option<Self> {
+        match ext.to_str() {
+            Some("deb") => Some(PackageFormat::Deb),
+            Some("AppImage") => Some(PackageFormat::Appimage),
+            Some("dmg") => Some(PackageFormat::Dmg),
+            Some("msi") => Some(PackageFormat::Msi),
+            _ => None,
         }
     }
 
