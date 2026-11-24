@@ -132,6 +132,18 @@ pub fn require_release_version(version: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn require_file_is_readable(path: &PathBuf) -> Result<()> {
+    if !path.exists() {
+        anyhow::bail!("Required file '{}' does not exist", path.display());
+    }
+    if !path.is_file() {
+        anyhow::bail!("Required path '{}' is not a file", path.display());
+    }
+    std::fs::File::open(path)
+        .map_err(|e| anyhow::anyhow!("Failed to open required file '{}': {e}", path.display()))?;
+    Ok(())
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, EnumIter)]
 pub enum PackageFormat {
     Deb,
