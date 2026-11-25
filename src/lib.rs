@@ -114,17 +114,33 @@ pub fn require_cargo_extension(extension: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn cargo_packager_deb(sh: &Shell, package: &str, target: &PathBuf, version: &str, clobber: bool) -> Result<()> {
+pub fn cargo_packager(
+    sh: &Shell,
+    format: PackageFormat,
+    package: &str,
+    target: &PathBuf,
+    version: &str,
+    clobber: bool,
+) -> Result<()> {
     require_cargo_extension("cargo-packager")?;
-    require_directory(target)?;
-    let filename = make_file_name(PackageFormat::Deb, package.to_string(), version, Platforms::from_host()?)?;
-    if target.join(&filename).exists() && !clobber{
-        println!("Package file '{}' already exists. Skipping packaging.", filename);
+    let _env = sh.push_env("APPIMAGE_EXTRACT_AND_RUN", "1");
+    let filename = make_file_name(
+        format,
+        package.to_string(),
+        version,
+        Platforms::from_host()?,
+    )?;
+    if target.join(&filename).exists() && !clobber {
+        println!(
+            "Package file '{}' already exists. Skipping packaging.",
+            filename
+        );
         return Ok(());
-    }
+    };
+    let name = format.packager_name();
     cmd!(
         sh,
-        "cargo packager --release -f deb -p {package} -o {target}"
+        "cargo packager --release -f {name} -p {package} -o {target}"
     )
     .run()?;
     Ok(())
@@ -240,6 +256,15 @@ impl PackageFormat {
             (Platforms::Amd64, PackageFormat::Msi) => "x64",
             (Platforms::Aarch64, PackageFormat::Deb | PackageFormat::Msi) => "arm64",
             (Platforms::Aarch64, PackageFormat::Appimage | PackageFormat::Dmg) => "aarch64",
+        }
+    }
+
+    pub fn packager_name(self) -> &'static str {
+        match self {
+            PackageFormat::Deb => "deb",
+            PackageFormat::Appimage => "appimage",
+            PackageFormat::Dmg => "dmg",
+            PackageFormat::Msi => "wix",
         }
     }
 }
