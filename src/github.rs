@@ -41,16 +41,17 @@ impl GithubRepo {
         Ok(())
     }
 
-    pub fn publish(&self, packages: Vec<String>, version: &str) -> Result<()> {
+    pub fn publish(&self, packages: Vec<String>, version: &str, clobber: bool) -> Result<()> {
         let release_notes = get_release_notes(version)?;
         let artifacts = get_build_artifacts(packages, version)?;
-        self.publish_artifacts_and_notes(artifacts, release_notes)
+        self.publish_artifacts_and_notes(artifacts, release_notes, clobber)
     }
 
     fn publish_artifacts_and_notes(
         &self,
         artifacts: Vec<BuildArtifact>,
         release_notes: ReleaseNotes,
+        clobber: bool,
     ) -> Result<()> {
         let sh = Shell::new()?;
         let version = release_notes.get_version();
@@ -83,10 +84,14 @@ impl GithubRepo {
             create_cmd.stdin(notes.changes_as_markdown()).run()?;
         }
         if !published_paths.is_empty() {
-            let upload_cmd = cmd!(
-                sh,
-                "gh release upload {version} {published_paths...} --clobber"
-            );
+            let upload_cmd = if clobber {
+                cmd!(
+                    sh,
+                    "gh release upload {version} {published_paths...} --clobber"
+                )
+            } else {
+                cmd!(sh, "gh release upload {version} {published_paths...}")
+            };
             upload_cmd.run()?;
         }
         Ok(())

@@ -170,12 +170,22 @@ impl AptlyPublisher {
         Ok(())
     }
 
-    pub fn add_package(&self, distro: &dyn LinuxDistro, path: PathBuf) -> Result<()> {
+    pub fn add_package(
+        &self,
+        distro: &dyn LinuxDistro,
+        path: PathBuf,
+        clobber: bool,
+    ) -> Result<()> {
         let sh = Shell::new()?;
         let distro_nickname = distro.get_nickname();
         let prefix = &self.prefix;
         let repo_name = format!("{prefix}-{distro_nickname}");
-        cmd!(sh, "aptly repo add {repo_name} {path}").run()?;
+        let cmd = if clobber {
+            cmd!(sh, "aptly repo add -force-replace {repo_name} {path}")
+        } else {
+            cmd!(sh, "aptly repo add {repo_name} {path}")
+        };
+        cmd.run()?;
         Ok(())
     }
 
