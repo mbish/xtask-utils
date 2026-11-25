@@ -114,9 +114,14 @@ pub fn require_cargo_extension(extension: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn cargo_packager_deb(sh: &Shell, package: &str, target: &PathBuf) -> Result<()> {
+pub fn cargo_packager_deb(sh: &Shell, package: &str, target: &PathBuf, version: &str, clobber: bool) -> Result<()> {
     require_cargo_extension("cargo-packager")?;
     require_directory(target)?;
+    let filename = make_file_name(PackageFormat::Deb, package.to_string(), version, Platforms::from_host()?)?;
+    if target.join(&filename).exists() && !clobber{
+        println!("Package file '{}' already exists. Skipping packaging.", filename);
+        return Ok(());
+    }
     cmd!(
         sh,
         "cargo packager --release -f deb -p {package} -o {target}"
