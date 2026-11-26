@@ -105,7 +105,12 @@ impl AptlyPublisher {
         format!("{prefix}-{os}",)
     }
 
-    pub fn publish_repos(&self, version: &str, distros: &Vec<Box<dyn LinuxDistro>>) -> Result<()> {
+    pub fn publish_repos(
+        &self,
+        version: &str,
+        distros: &Vec<Box<dyn LinuxDistro>>,
+        clobber: bool,
+    ) -> Result<()> {
         let sh = Shell::new()?;
         let time = chrono::Utc::now();
         let aptly_profile = &self.profile;
@@ -133,10 +138,18 @@ impl AptlyPublisher {
                 "aptly publish snapshot -gpg-key={key} -distribution={distro_nick} {snapshot_name} s3:{aptly_profile}:{distro_nick}/"
             ).run()?;
             }
-            cmd!(
-                sh,
-                "aptly publish switch -gpg-key={key} {distro_nick} s3:{aptly_profile}:{distro_nick}/ {snapshot_name}"
-            ).run()?;
+            let switch_cmd = if clobber {
+                cmd!(
+                    sh,
+                    "aptly publish switch -force-replace -gpg-key={key} {distro_nick} s3:{aptly_profile}:{distro_nick}/ {snapshot_name}"
+                )
+            } else {
+                cmd!(
+                    sh,
+                    "aptly publish switch -gpg-key={key} {distro_nick} s3:{aptly_profile}:{distro_nick}/ {snapshot_name}"
+                )
+            };
+            switch_cmd.run()?;
         }
         Ok(())
     }
