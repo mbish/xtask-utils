@@ -141,7 +141,7 @@ impl AptlyPublisher {
             let switch_cmd = if clobber {
                 cmd!(
                     sh,
-                    "aptly publish switch -force-replace -gpg-key={key} {distro_nick} s3:{aptly_profile}:{distro_nick}/ {snapshot_name}"
+                    "aptly publish switch -force-overwrite -gpg-key={key} {distro_nick} s3:{aptly_profile}:{distro_nick}/ {snapshot_name}"
                 )
             } else {
                 cmd!(
